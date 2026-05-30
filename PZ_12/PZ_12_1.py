@@ -1,22 +1,23 @@
 # 1. Для каждой строки матрицы с нечетным номером найти среднее арифметическое ее
 # элементов.
 
-matrix = [
-    [3, 8, 1],
-    [5, -2, 7],
-    [0, 4, 6],
-    [9, -1, 2],
-    [7, 3, -4]
-]
+import random
 
-print("Исходная матрица:")
-list(map(print, matrix))
+#Ввод размеров
+rows = int(input("Введите количество строк: "))
+cols = int(input("Введите количество столбцов: "))
 
-#Cтроки с нечётным номером
-odd_rows = matrix[::2]  # срез
+#Генерация матрицы
+matrix = [[random.randint(-20, 50) for _ in range(cols)] for _ in range(rows)]
 
-#Среднее арифметическое через map + lambda
-averages = list(map(lambda row: sum(row) / len(row), odd_rows))
+#Вывод исходной матрицы
+print("\nИсходная матрица:")
+for row in matrix:
+    print(row)
 
-print("\nСреднее арифметическое для строк с нечетным номером (1,3,5...):")
-list(map(lambda avg, i: print(f"Строка {i*2+1}: {avg:.2f}"), averages, range(len(averages))))
+#Обработка строки с нечетным номером
+print("\nСреднее арифметическое для строк с нечетным номером (1, 3, 5...):")
+for i in range(rows):
+    if i % 2 == 0:
+        avg = sum(matrix[i]) / cols
+        print(f"Строка {i+1}: {avg:.2f}")
