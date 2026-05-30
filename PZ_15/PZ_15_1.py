@@ -1,230 +1,209 @@
 
 import sqlite3
+from data_products import products_data
 
 
-#СОЗДАНИЕ БД И ТАБЛИЦЫ
-def create_db():
-    conn = sqlite3.connect('warehouse.db')
-    cur = conn.cursor()
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS Товары (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            Код_товара TEXT UNIQUE,
-            Торговая_марка TEXT,
-            Тип TEXT,
-            Цена REAL,
-            Количество_на_складе INTEGER,
-            Минимальный_запас INTEGER
-        )
-    ''')
-    conn.commit()
-    conn.close()
+class WarehouseDB:
+    def __init__(self, db_name='warehouse.db'):
+        self.db_name = db_name
+        self.create_table()
+        self.load_data()
 
+    def get_connection(self):
+        return sqlite3.connect(self.db_name)
 
-#ВВОД 10 ЗАПИСЕЙ
-def add_records():
-    conn = sqlite3.connect('warehouse.db')
-    cur = conn.cursor()
-
-    # Если в таблице уже есть записи, спросим
-    cur.execute("SELECT COUNT(*) FROM Товары")
-    count = cur.fetchone()[0]
-    if count >= 10:
-        print("В таблице уже есть 10 или более записей. Добавление отменено.")
-        conn.close()
-        return
-
-    print("\n--- Добавление 10 товаров ---")
-    for i in range(10):
-        print(f"\nТовар {i + 1}:")
-        code = input("  Код товара: ")
-        brand = input("  Торговая марка: ")
-        ptype = input("  Тип: ")
-        price = float(input("  Цена: "))
-        quantity = int(input("  Количество на складе: "))
-        min_stock = int(input("  Минимальный запас: "))
-
-        try:
+    def create_table(self):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
             cur.execute('''
-                INSERT INTO Товары (Код_товара, Торговая_марка, Тип, Цена, Количество_на_складе, Минимальный_запас)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (code, brand, ptype, price, quantity, min_stock))
-            conn.commit()
-            print("  ✓ Добавлено")
-        except sqlite3.IntegrityError:
-            print("  Ошибка: товар с таким кодом уже существует!")
+                CREATE TABLE IF NOT EXISTS Товары (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Код_товара TEXT UNIQUE,
+                    Торговая_марка TEXT,
+                    Тип TEXT,
+                    Цена REAL,
+                    Количество_на_складе INTEGER,
+                    Минимальный_запас INTEGER
+                )
+            ''')
 
-    conn.close()
-    print("\nДобавление завершено.")
+    def load_data(self):
+        """Загружает готовые данные из файла, если таблица пуста"""
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM Товары")
+            if cur.fetchone()[0] == 0:
+                cur.executemany('''
+                    INSERT INTO Товары (Код_товара, Торговая_марка, Тип, Цена, Количество_на_складе, Минимальный_запас)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', products_data)
+                print(f"Загружено {len(products_data)} записей из data_products.py")
 
+    #ПОИСК (3 варианта)
+    def search_by_code(self, code):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM Товары WHERE Код_товара = ?", (code,))
+            return cur.fetchall()
 
-#ПОИСК (3 варианта)
-def search():
-    conn = sqlite3.connect('warehouse.db')
-    cur = conn.cursor()
+    def search_by_brand(self, brand_part):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM Товары WHERE Торговая_марка LIKE ?", (f'%{brand_part}%',))
+            return cur.fetchall()
 
-    print("\n--- ПОИСК ТОВАРОВ ---")
-    print("1. Поиск по коду товара (точное совпадение)")
-    print("2. Поиск по торговой марке (частичное совпадение)")
-    print("3. Поиск товаров с количеством меньше минимального запаса")
-    choice = input("Выберите вариант поиска (1-3): ")
+    def search_out_of_stock(self):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM Товары WHERE Количество_на_складе < Минимальный_запас")
+            return cur.fetchall()
 
-    if choice == '1':
-        code = input("Введите код товара: ")
-        cur.execute("SELECT * FROM Товары WHERE Код_товара = ?", (code,))
-        results = cur.fetchall()
-        if results:
-            print("\nРезультаты поиска:")
-            for row in results:
-                print(row)
-        else:
-            print("Товар не найден.")
+    #УДАЛЕНИЕ (3 варианта)
+    def delete_by_code(self, code):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM Товары WHERE Код_товара = ?", (code,))
+            return cur.rowcount
 
-    elif choice == '2':
-        brand = input("Введите часть названия торговой марки: ")
-        cur.execute("SELECT * FROM Товары WHERE Торговая_марка LIKE ?", (f'%{brand}%',))
-        results = cur.fetchall()
-        if results:
-            print(f"\nНайдено {len(results)} товаров:")
-            for row in results:
-                print(row)
-        else:
-            print("Ничего не найдено.")
+    def delete_by_brand(self, brand):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM Товары WHERE Торговая_марка = ?", (brand,))
+            return cur.rowcount
 
-    elif choice == '3':
-        cur.execute("SELECT * FROM Товары WHERE Количество_на_складе < Минимальный_запас")
-        results = cur.fetchall()
-        if results:
-            print(f"\nТовары с дефицитом ({len(results)} шт.):")
-            for row in results:
-                print(row)
-        else:
-            print("Все товары в достаточном количестве.")
+    def delete_zero_quantity(self):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM Товары WHERE Количество_на_складе = 0")
+            return cur.rowcount
 
-    else:
-        print("Неверный выбор.")
+    #РЕДАКТИРОВАНИЕ (3 варианта)
+    def update_price(self, code, new_price):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE Товары SET Цена = ? WHERE Код_товара = ?", (new_price, code))
+            return cur.rowcount
 
-    conn.close()
+    def update_quantity_by_brand(self, brand, new_qty):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE Товары SET Количество_на_складе = ? WHERE Торговая_марка = ?", (new_qty, brand))
+            return cur.rowcount
 
+    def increase_price_for_deficit(self, percent=10):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"UPDATE Товары SET Цена = Цена * {1 + percent / 100} WHERE Количество_на_складе < Минимальный_запас")
+            return cur.rowcount
 
-#УДАЛЕНИЕ (3 варианта)
-def delete():
-    conn = sqlite3.connect('warehouse.db')
-    cur = conn.cursor()
-
-    print("\n--- УДАЛЕНИЕ ТОВАРОВ ---")
-    print("1. Удалить по коду товара")
-    print("2. Удалить все товары заданной торговой марки")
-    print("3. Удалить товары с нулевым количеством на складе")
-    choice = input("Выберите вариант удаления (1-3): ")
-
-    if choice == '1':
-        code = input("Введите код товара для удаления: ")
-        cur.execute("DELETE FROM Товары WHERE Код_товара = ?", (code,))
-        conn.commit()
-        print(f"Удалено записей: {cur.rowcount}")
-
-    elif choice == '2':
-        brand = input("Введите торговую марку для удаления: ")
-        cur.execute("DELETE FROM Товары WHERE Торговая_марка = ?", (brand,))
-        conn.commit()
-        print(f"Удалено записей: {cur.rowcount}")
-
-    elif choice == '3':
-        cur.execute("DELETE FROM Товары WHERE Количество_на_складе = 0")
-        conn.commit()
-        print(f"Удалено записей: {cur.rowcount}")
-
-    else:
-        print("Неверный выбор.")
-
-    conn.close()
+    #ВСЕ ЗАПИСИ
+    def get_all(self):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM Товары")
+            return cur.fetchall()
 
 
-#РЕДАКТИРОВАНИЕ (3 варианта)
-def edit():
-    conn = sqlite3.connect('warehouse.db')
-    cur = conn.cursor()
-
-    print("\n--- РЕДАКТИРОВАНИЕ ТОВАРОВ ---")
-    print("1. Изменить цену товара по коду")
-    print("2. Изменить количество на складе по торговой марке")
-    print("3. Увеличить цену на 10% для товаров с остатком меньше минимального")
-    choice = input("Выберите вариант редактирования (1-3): ")
-
-    if choice == '1':
-        code = input("Введите код товара: ")
-        new_price = float(input("Новая цена: "))
-        cur.execute("UPDATE Товары SET Цена = ? WHERE Код_товара = ?", (new_price, code))
-        conn.commit()
-        print(f"Обновлено записей: {cur.rowcount}")
-
-    elif choice == '2':
-        brand = input("Введите торговую марку: ")
-        new_qty = int(input("Новое количество на складе: "))
-        cur.execute("UPDATE Товары SET Количество_на_складе = ? WHERE Торговая_марка = ?", (new_qty, brand))
-        conn.commit()
-        print(f"Обновлено записей: {cur.rowcount}")
-
-    elif choice == '3':
-        cur.execute("UPDATE Товары SET Цена = Цена * 1.1 WHERE Количество_на_складе < Минимальный_запас")
-        conn.commit()
-        print(f"Обновлено записей: {cur.rowcount}")
-
-    else:
-        print("Неверный выбор.")
-
-    conn.close()
-
-
-#ПРОСМОТР ВСЕХ ЗАПИСЕЙ
-def view_all():
-    conn = sqlite3.connect('warehouse.db')
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM Товары")
-    rows = cur.fetchall()
-
-    if rows:
-        print("\n--- ВСЕ ТОВАРЫ ---")
-        for row in rows:
-            print(row)
-    else:
-        print("Таблица пуста.")
-    conn.close()
-
-
-#ГЛАВНОЕ МЕНЮ
+#МЕНЮ (консольный интерфейс)
 def main():
-    create_db()
+    db = WarehouseDB()
 
     while True:
         print("\n" + "=" * 50)
         print("        ТОВАРНЫЙ ЗАПАС - Главное меню")
         print("=" * 50)
-        print("1. Добавить 10 товаров")
-        print("2. Поиск товаров (3 варианта)")
-        print("3. Удаление товаров (3 варианта)")
-        print("4. Редактирование товаров (3 варианта)")
-        print("5. Показать все товары")
-        print("6. Выход")
+        print("1. Показать все товары")
+        print("2. Поиск товаров")
+        print("3. Удаление товаров")
+        print("4. Редактирование товаров")
+        print("5. Выход")
 
-        choice = input("Выберите действие (1-6): ")
+        choice = input("Выберите действие (1-5): ")
 
         if choice == '1':
-            add_records()
+            rows = db.get_all()
+            if rows:
+                for row in rows:
+                    print(row)
+            else:
+                print("Таблица пуста.")
+
         elif choice == '2':
-            search()
+            print("\n--- ПОИСК ---")
+            print("1. По коду товара")
+            print("2. По части торговой марки")
+            print("3. Товары с дефицитом")
+            opt = input("Выберите вариант (1-3): ")
+
+            if opt == '1':
+                code = input("Код товара: ")
+                res = db.search_by_code(code)
+            elif opt == '2':
+                brand = input("Часть названия марки: ")
+                res = db.search_by_brand(brand)
+            elif opt == '3':
+                res = db.search_out_of_stock()
+            else:
+                print("Неверный выбор")
+                continue
+
+            if res:
+                for r in res:
+                    print(r)
+            else:
+                print("Ничего не найдено.")
+
         elif choice == '3':
-            delete()
+            print("\n--- УДАЛЕНИЕ ---")
+            print("1. По коду товара")
+            print("2. По торговой марке (все)")
+            print("3. Удалить товары с нулевым остатком")
+            opt = input("Выберите вариант (1-3): ")
+
+            if opt == '1':
+                code = input("Код товара: ")
+                cnt = db.delete_by_code(code)
+            elif opt == '2':
+                brand = input("Торговая марка: ")
+                cnt = db.delete_by_brand(brand)
+            elif opt == '3':
+                cnt = db.delete_zero_quantity()
+            else:
+                print("Неверный выбор")
+                continue
+
+            print(f"Удалено записей: {cnt}")
+
         elif choice == '4':
-            edit()
+            print("\n--- РЕДАКТИРОВАНИЕ ---")
+            print("1. Изменить цену по коду товара")
+            print("2. Изменить количество на складе по торговой марке")
+            print("3. Поднять цены на дефицитные товары на 10%")
+            opt = input("Выберите вариант (1-3): ")
+
+            if opt == '1':
+                code = input("Код товара: ")
+                new_price = float(input("Новая цена: "))
+                cnt = db.update_price(code, new_price)
+            elif opt == '2':
+                brand = input("Торговая марка: ")
+                new_qty = int(input("Новое количество: "))
+                cnt = db.update_quantity_by_brand(brand, new_qty)
+            elif opt == '3':
+                cnt = db.increase_price_for_deficit(10)
+            else:
+                print("Неверный выбор")
+                continue
+
+            print(f"Обновлено записей: {cnt}")
+
         elif choice == '5':
-            view_all()
-        elif choice == '6':
             print("До свидания!")
             break
+
         else:
-            print("Неверный ввод, попробуйте снова.")
+            print("Неверный ввод.")
 
 
 if __name__ == "__main__":
